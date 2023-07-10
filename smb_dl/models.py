@@ -13,7 +13,9 @@ class NLL_LOSS(torch.nn.Module):
     def __init__(self, ct_sigma=None, max_epochs_ct_sigma=None):
         if max_epochs_ct_sigma is not None:
             assert ct_sigma is not None
-        self.ct_log_sigma_sq = torch.tensor(np.log(ct_sigma ** 2), requires_grad=False).to(local_cfg.DEVICE)
+            self.ct_log_sigma_sq = torch.tensor(np.log(ct_sigma ** 2), requires_grad=False).to(local_cfg.DEVICE)
+        else:
+            self.ct_log_sigma_sq = None
         self.max_epochs_ct_sigma = max_epochs_ct_sigma
         super().__init__()
 

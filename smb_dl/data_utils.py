@@ -1,36 +1,8 @@
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import cross_validate, GroupShuffleSplit, GroupKFold
+from sklearn.model_selection import GroupShuffleSplit
 import torch
 
 import config as local_cfg
-
-
-def prepare_smb_df(fp):
-    df = pd.read_csv(fp)
-
-    # make it like a training data matrix
-    df_annual = df.pivot(index=['gid', 'year'], columns=['month'], values=['temp', 'prcp'])
-
-    # rename the columns
-
-    df_annual.columns = [f'{col[0]}_{col[1]:02d}' for col in df_annual.columns]
-
-    # add the remaining features
-    right_df = df.groupby(['gid', 'year']).first().reset_index()[
-        ['year', 'gid', 'lon', 'lat', 'area', 'z_min', 'z_max', 'z_med', 'slope', 'aspect', 'mb']]
-    df_annual = df_annual.reset_index().merge(right_df, how='left').rename(columns={'mb': 'annual_mb'})
-
-    # use cos(aspect) as feature
-    df_annual['aspect'] = np.cos(df_annual.aspect.values)
-
-    # make gid & year indices
-    df_annual = df_annual.groupby(['gid', 'year']).first()
-
-    # mm to m
-    df_annual.iloc[:, -1] /= 1000
-
-    return df_annual
 
 
 def add_gaussian_noise(df_annual, min_z_noise: float = 0.1, max_z_noise: float = 0.1, seed=local_cfg.SEED):
@@ -68,7 +40,7 @@ def train_valid_test_split(df_annual, test_fraction=0.2, valid_fraction=0.1, see
     assert len(set(df_train.reset_index().gid.values) & set(df_valid.reset_index().gid.values)) == 0
     assert len(set(df_train.reset_index().gid.values) & set(df_test.reset_index().gid.values)) == 0
 
-    return df_train, df_valid, df_test
+    return df_train, df_valid, df_test, idx_train_valid[idx_train], idx_train_valid[idx_valid], idx_test
 
 
 def get_smb_data_tensors(df_train, df_valid, df_test, input_cols, output_col):
@@ -97,7 +69,7 @@ def standardize_data(df_train, x_train, x_valid, x_test):
     f_groups = [
         [c for c in cols if 'temp' in c],
         [c for c in cols if 'prcp' in c],
-        ['lon'], ['lat'], ['area'], ['z_min', 'z_med', 'z_max'], ['slope'], ['aspect']
+        ['lon'], ['lat'], ['area'], ['z_min', 'z_med', 'z_max'], ['slope']
     ]
 
     for f_group in f_groups:
