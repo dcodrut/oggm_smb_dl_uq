@@ -90,6 +90,12 @@ def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experi
     df_annual = df_annual.set_index(['gid', 'year'])
     out_dir = Path(local_cfg.RESULTS_DIR) / experiment_name / model_type
 
+    # check if the model already exists and skipp if needed
+    fp = Path(out_dir) / f'model_weights_z_{z_noise:.2f}_seed_model_{seed_model}_seed_data_{seed_data}.pt'
+    if fp.exists() and not local_cfg.OVERWRITE_EXP:
+        print(f'{fp} already exists. Skipping.')
+        return
+
     # add noise to the data
     df_annual = add_gaussian_noise(df_annual, min_z_noise=z_noise, max_z_noise=z_noise, seed=seed_model)
 
@@ -195,7 +201,6 @@ def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experi
     res_df_summary.to_csv(fp)
 
     # save the model weights
-    fp = Path(out_dir) / f'model_weights_z_{z_noise:.2f}_seed_model_{seed_model}_seed_data_{seed_data}.pt'
     torch.save(model.state_dict(), fp)
     print(f'Model weights saved to {fp}')
 
@@ -274,8 +279,7 @@ if __name__ == '__main__':
                     settings_ensemble.append(crt_settings)
     print(f'len(settings_ensemble) = {len(settings_ensemble)}')
 
-    # all_settings = settings_baseline_mlp + settings_gaussian_mlp + settings_mc_dropout + settings_ensemble
-    all_settings = settings_baseline_mlp
+    all_settings = settings_baseline_mlp + settings_gaussian_mlp + settings_mc_dropout + settings_ensemble
     print(f'len(all_settings) = {len(all_settings)}')
     print(f'#procs = {local_cfg.NUM_PROCS}')
 
@@ -284,6 +288,6 @@ if __name__ == '__main__':
         for crt_settings in tqdm(all_settings):
             run_experiment_star(crt_settings)
     else:
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(num_procs) as pool:
             for _ in tqdm(pool.imap_unordered(run_experiment_star, all_settings, chunksize=1), total=len(all_settings)):
                 pass
