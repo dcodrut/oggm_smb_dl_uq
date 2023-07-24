@@ -89,9 +89,9 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     out_dir = Path(local_cfg.RESULTS_DIR) / experiment_name / model_type
 
     # check if the model already exists and skipp if needed
-    fp = Path(out_dir) / f'model_weights_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.pt'
-    if fp.exists() and not local_cfg.OVERWRITE_EXP:
-        print(f'{fp} already exists. Skipping.')
+    fp_model = Path(out_dir) / f'model_weights_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.pt'
+    if fp_model.exists() and not local_cfg.OVERWRITE_EXP:
+        print(f'{fp_model} already exists. Skipping.')
         return
 
     # add noise to the data
@@ -163,7 +163,8 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
 
             # get predictions
             x = dl.dataset.tensors[0]
-            outputs = torch.stack([model(x) for _ in range(n_samples)], dim=2).detach()
+            with torch.no_grad():
+                outputs = torch.stack([model(x) for _ in range(n_samples)], dim=2).detach()
             y_pred = outputs[:, 0, :].mean(dim=1).cpu().numpy()
             y_true = dl.dataset.tensors[1].cpu().numpy().flatten()
             df = {'train': df_train, 'valid': df_valid, 'test': df_test}[fold]
@@ -205,8 +206,8 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     res_df_summary.to_csv(fp)
 
     # save the model weights
-    torch.save(model.state_dict(), fp)
-    print(f'Model weights saved to {fp}')
+    torch.save(model.state_dict(), fp_model)
+    print(f'Model weights saved to {fp_model}')
 
 
 def run_experiment_star(settings):
