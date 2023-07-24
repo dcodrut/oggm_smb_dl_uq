@@ -165,12 +165,8 @@ def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experi
 
             # get predictions
             x = dl.dataset.tensors[0]
-            outputs = torch.stack([model(x) for i in range(n_samples)], dim=2).detach()
+            outputs = torch.stack([model(x) for _ in range(n_samples)], dim=2).detach()
             y_pred = outputs[:, 0, :].mean(dim=1).cpu().numpy()
-            if model_type == 'gaussian':
-                sigma_pred = torch.exp(outputs[:, 1, :]).mean(dim=1).sqrt().cpu().numpy()
-            else:
-                sigma_pred = np.zeros_like(y_pred) + np.nan
             y_true = dl.dataset.tensors[1].cpu().numpy().flatten()
             df = {'train': df_train, 'valid': df_valid, 'test': df_test}[fold]
             idx = {'train': idx_train, 'valid': idx_valid, 'test': idx_test}[fold]
@@ -185,9 +181,19 @@ def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experi
                 'noise': noise,
                 'y_true': y_true,
                 'y_pred': y_pred,
-                'sigma_pred': sigma_pred,
                 'mae': mae_scores
             })
+
+            # add the predicted sigmas if available
+            if model_type == 'gaussian':
+                sigma_pred = torch.exp(outputs[:, 1, :]).mean(dim=1).sqrt().cpu().numpy()
+                res_df['sigma_pred'] = sigma_pred
+
+            # add the standard deviation over the predictions is dropout is used
+            if dropout_p != 0:
+                y_std = outputs[:, 0, :].std(dim=1).cpu().numpy()
+                res_df['y_std'] = y_std
+
             res_df_list.append(res_df)
 
     res_df = pd.concat(res_df_list)
