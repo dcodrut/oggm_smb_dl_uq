@@ -1,7 +1,5 @@
 import pandas as pd
-import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
-import torch
 from tqdm import trange, tqdm
 from matplotlib import pyplot as plt
 from pathlib import Path
@@ -85,13 +83,13 @@ def train_model(
     return scores_per_epoch
 
 
-def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experiment_name=''):
+def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, experiment_name=''):
     df_annual = pd.read_csv(local_cfg.FP_SMB_DATA_PROCESSED)
     df_annual = df_annual.set_index(['gid', 'year'])
     out_dir = Path(local_cfg.RESULTS_DIR) / experiment_name / model_type
 
     # check if the model already exists and skipp if needed
-    fp = Path(out_dir) / f'model_weights_z_{z_noise:.2f}_seed_model_{seed_model}_seed_data_{seed_data}.pt'
+    fp = Path(out_dir) / f'model_weights_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.pt'
     if fp.exists() and not local_cfg.OVERWRITE_EXP:
         print(f'{fp} already exists. Skipping.')
         return
@@ -99,10 +97,10 @@ def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experi
     # add noise to the data
     df_annual = add_gaussian_noise(df_annual, min_z_noise=z_noise, max_z_noise=z_noise, seed=seed_model)
 
-    print(f'\n\nSettings: seed_model = {seed_model}; seed_data = {seed_data};'
+    print(f'\n\nSettings: seed_model = {seed_model}; seed_split = {seed_split};'
           f' z_noise = {z_noise}; model_type = {model_type}\n')
     print(df_annual)
-    df_train, df_valid, df_test, idx_train, idx_valid, idx_test = train_valid_test_split(df_annual, seed=seed_data)
+    df_train, df_valid, df_test, idx_train, idx_valid, idx_test = train_valid_test_split(df_annual, seed=seed_split)
 
     x_train, y_train, x_valid, y_valid, x_test, y_test, = get_smb_data_tensors(
         df_train, df_valid, df_test,
@@ -149,7 +147,7 @@ def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experi
             if i < n_cols // 2:
                 plt.grid()
         if local_cfg.SAVE_PLOTS:
-            fn = f'learning_curve_z_{z_noise:.2f}_seed_model_{seed_model}_seed_data_{seed_data}.png'
+            fn = f'learning_curve_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.png'
             fp = Path(out_dir) / fn
             fp.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(fp)
@@ -201,9 +199,9 @@ def run_experiment(seed_model, seed_data, model_type, z_noise, dropout_p, experi
     print('MAE stats:')
     print(res_df_summary)
     Path(out_dir).mkdir(parents=True, exist_ok=True)
-    fp = Path(out_dir) / f'stats_z_{z_noise:.2f}_seed_model_{seed_model}_seed_data_{seed_data}.csv'
+    fp = Path(out_dir) / f'stats_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
     res_df.to_csv(fp, index=False)
-    fp = Path(out_dir) / f'stats_summary_z_{z_noise:.2f}_seed_model_{seed_model}_seed_data_{seed_data}.csv'
+    fp = Path(out_dir) / f'stats_summary_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
     res_df_summary.to_csv(fp)
 
     # save the model weights
@@ -222,12 +220,12 @@ if __name__ == '__main__':
     # 1. baseline MLP
     settings_baseline_mlp = []
     for crt_seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
-        crt_seed_data = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
+        crt_seed_split = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
         for crt_z_noise in local_cfg.Z_NOISE_LIST:
             crt_settings = {
                 'experiment_name': 'baseline',
                 'seed_model': crt_seed_model,
-                'seed_data': crt_seed_data,
+                'seed_split': crt_seed_split,
                 'z_noise': crt_z_noise,
                 'model_type': 'standard',
                 'dropout_p': 0.0
@@ -238,12 +236,12 @@ if __name__ == '__main__':
     # 2. Gaussian MLP
     settings_gaussian_mlp = []
     for crt_seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
-        crt_seed_data = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
+        crt_seed_split = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
         for crt_z_noise in local_cfg.Z_NOISE_LIST:
             crt_settings = {
                 'experiment_name': 'gaussian',
                 'seed_model': crt_seed_model,
-                'seed_data': crt_seed_data,
+                'seed_split': crt_seed_split,
                 'z_noise': crt_z_noise,
                 'model_type': 'gaussian',
                 'dropout_p': 0.0
@@ -254,13 +252,13 @@ if __name__ == '__main__':
     # 3. MC Dropout - both with and without Gaussian output
     settings_mc_dropout = []
     for crt_seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
-        crt_seed_data = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
+        crt_seed_split = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
         for crt_z_noise in local_cfg.Z_NOISE_LIST:
             for crt_model_type in local_cfg.MODEL_TYPE_LIST:
                 crt_settings = {
                     'experiment_name': 'mc_dropout',
                     'seed_model': crt_seed_model,
-                    'seed_data': crt_seed_data,
+                    'seed_split': crt_seed_split,
                     'z_noise': crt_z_noise,
                     'model_type': crt_model_type,
                     'dropout_p': local_cfg.DROPOUT_P
@@ -270,14 +268,14 @@ if __name__ == '__main__':
 
     # 4. Ensemble - both with and without Gaussian output
     settings_ensemble = []
-    for crt_seed_data in range(local_cfg.SEED, local_cfg.SEED + local_cfg.ENSEMBLE_SIZE):
+    for crt_seed_split in range(local_cfg.SEED, local_cfg.SEED + local_cfg.ENSEMBLE_SIZE):
         for crt_seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
             for crt_z_noise in local_cfg.Z_NOISE_LIST:
                 for crt_model_type in local_cfg.MODEL_TYPE_LIST:
                     crt_settings = {
                         'experiment_name': 'ensemble',
                         'seed_model': crt_seed_model,
-                        'seed_data': crt_seed_data,
+                        'seed_split': crt_seed_split,
                         'z_noise': crt_z_noise,
                         'model_type': crt_model_type,
                         'dropout_p': 0.0
