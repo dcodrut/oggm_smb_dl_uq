@@ -93,6 +93,7 @@ if __name__ == '__main__':
 
                     # get predictions
                     y_pred = rf_model.predict(x)
+                    y_std = np.std(np.vstack([t.predict(x) for t in rf_model.estimators_]), axis=0)
                     noise = res_df_mlp_crt_fold.noise.values
                     mae_scores = np.abs(y_pred - y_true)
                     res_df = pd.DataFrame(
@@ -103,6 +104,7 @@ if __name__ == '__main__':
                             'noise': noise,
                             'y_true': y_true,
                             'y_pred': y_pred,
+                            'y_std': y_std,
                             'mae': mae_scores,
                         }
                     )
