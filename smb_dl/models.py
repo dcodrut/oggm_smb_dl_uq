@@ -64,6 +64,7 @@ class MLP(torch.nn.Module):
         self.net = torch.nn.Sequential(*layers)
         self.predict_sigma = predict_sigma
         self.predict_ct_sigma = predict_ct_sigma
+        self.dropout_p = dropout_p
 
     def forward(self, x) -> torch.Tensor:
         out = self.net(x)

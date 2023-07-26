@@ -1,4 +1,5 @@
 import pandas as pd
+import torch
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import trange, tqdm
 from matplotlib import pyplot as plt
@@ -18,18 +19,23 @@ def train_model(
         lr: float,
         n_epochs: int = 100,
         patience=10,
-):
-    """Train model for Map estimate.
-
-    Args:
-      model: model to train
-      criterion: loss function
-      train_loader: dataloader with training data
-      lr: learning rate
-      n_epochs: number of epochs to train for
-
-    Returns:
-      trained model
+        save_best_model=False,
+        save_last_model=False,
+        out_dir=None,
+        label=''):
+    """
+    :param model: model to be trained
+    :param criterion: loss function
+    :param train_loader: training data loader
+    :param valid_loader: validation data loader
+    :param lr: learning rate
+    :param n_epochs: maximum number of epochs
+    :param patience: how many epoch to wait until the training stops if no improvement occurs on the validation set
+    :param save_best_model: whether to save the best model (based on the validation set)
+    :param save_last_model: whether to save the last model
+    :param out_dir: the directory path where to save the model's weights
+    :param label: a label to be added in the filename when saving the model's weights
+    :return: the scores per epoch (can be used for plotting the learning curves)
     """
 
     scores_per_epoch = []
@@ -41,6 +47,13 @@ def train_model(
         for X, y in train_loader:
             optimizer.zero_grad()
             y_pred = model(X)
+
+            # perform multiple forward passes if needed
+            num_samples = local_cfg.NUM_SAMPLES_MC_DROPOUT_TRAINING if model.dropout_p > 0 else 1
+            for _ in range(num_samples - 1):
+                y_pred += model(X)
+            y_pred /= num_samples
+
             if isinstance(criterion, NLL_LOSS):
                 loss = criterion(y_pred, y, crt_epoch=i_epoch)
             else:
@@ -57,6 +70,12 @@ def train_model(
         with torch.no_grad():
             for X, y in valid_loader:
                 y_pred = model(X)
+
+                # perform multiple forward passes if needed
+                for _ in range(num_samples - 1):
+                    y_pred += model(X)
+                y_pred /= num_samples
+
                 if isinstance(criterion, NLL_LOSS):
                     loss = criterion(y_pred, y, crt_epoch=i_epoch)
                 else:
@@ -67,10 +86,23 @@ def train_model(
                 mse = ((y_pred[:, 0] - y[:, 0]).detach().cpu() ** 2).mean().sqrt().cpu().item()
                 scores['valid_RMSE'].append(mse)
 
+                # check if the error reduced and then save the model
+                if save_best_model and i_epoch > 1:
+                    best_mae_so_far = np.mean([x['valid_MAE'] for x in scores_per_epoch[:-1]])
+                    if mae < best_mae_so_far:
+                        fp_model = Path(out_dir) / f'model_weights_{label}_best.pt'
+                        fp_model.parent.mkdir(parents=True, exist_ok=True)
+                        torch.save(model.state_dict(), fp_model)
+
         scores_per_epoch.append({k: np.mean(v) for (k, v) in scores.items()})
         pbar.set_postfix(scores='; '.join([f"{k}={v:.3f}" for (k, v) in scores_per_epoch[-1].items()]))
 
         # check the loss of the last n epochs compared to the previous n epochs, where n = patience
+        # if the model is trained with the NLL loss and fixed sigma, ignore the first epochs
+        if isinstance(criterion, NLL_LOSS) and criterion.max_epochs_ct_sigma is not None:
+            if i_epoch < criterion.max_epochs_ct_sigma:
+                continue
+
         if i_epoch > 2 * patience:
             avg_score_last_n = np.mean([x['valid_MAE'] for x in scores_per_epoch[-patience:]])
             avg_score_prev_last_n = np.mean([x['valid_MAE'] for x in scores_per_epoch[-(2 * patience): -patience]])
@@ -80,6 +112,11 @@ def train_model(
                       f'avg_score_prev_last_n = {avg_score_prev_last_n:.3f}')
                 break
 
+    if save_last_model:
+        fp_model = Path(out_dir) / f'model_weights_{label}_last.pt'
+        fp_model.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(model.state_dict(), fp_model)
+
     return scores_per_epoch
 
 
@@ -87,12 +124,6 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     df_annual = pd.read_csv(local_cfg.FP_SMB_DATA_PROCESSED)
     df_annual = df_annual.set_index(['gid', 'year'])
     out_dir = Path(local_cfg.RESULTS_DIR) / experiment_name / model_type
-
-    # check if the model already exists and skipp if needed
-    fp_model = Path(out_dir) / f'model_weights_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.pt'
-    if fp_model.exists() and not local_cfg.OVERWRITE_EXP:
-        print(f'{fp_model} already exists. Skipping.')
-        return
 
     # add noise to the data
     df_annual = add_gaussian_noise(df_annual, min_z_noise=z_noise, max_z_noise=z_noise, seed=seed_model)
@@ -125,33 +156,54 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
         model = MLP(n_inputs=x_train.shape[1], n_hidden=[50, 25], dropout_p=dropout_p)
         loss = torch.nn.MSELoss()
     else:
-        model = MLP(n_inputs=x_train.shape[1], n_hidden=[50, 25], n_outputs=2, predict_sigma=True,
-                    dropout_p=dropout_p)
+        model = MLP(n_inputs=x_train.shape[1], n_hidden=[50, 25], n_outputs=2, predict_sigma=True, dropout_p=dropout_p)
         loss = NLL_LOSS()
 
-    # train model
-    patience = 25 if dropout_p == 0.0 else 100
-    scores_per_epoch = train_model(
-        model, loss, train_dl, valid_dl, lr=2e-4, n_epochs=local_cfg.MAX_N_EPOCHS, patience=patience)
-    scores_per_epoch_df = pd.DataFrame.from_records(scores_per_epoch)
-    if local_cfg.SHOW_PLOTS:
-        n_cols = len(scores_per_epoch_df.columns)
-        plt.figure(figsize=(20, 4), dpi=120)
-        for i, k in enumerate(scores_per_epoch_df.columns):
-            plt.subplot(1, n_cols // 2, i % 3 + 1)
-            plt.plot(np.arange(len(scores_per_epoch_df)) + 1, scores_per_epoch_df[k], linewidth=2,
-                     label=k)
-            plt.xlabel('epoch')
-            plt.ylabel(k)
-            plt.legend()
-            if i < n_cols // 2:
-                plt.grid()
-        if local_cfg.SAVE_PLOTS:
-            fn = f'learning_curve_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.png'
-            fp = Path(out_dir) / fn
-            fp.parent.mkdir(parents=True, exist_ok=True)
-            plt.savefig(fp)
-        # plt.show()
+    # check if the results already exist and skip if needed
+    label = f'z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
+    fp = Path(out_dir) / f'stats_{label}.csv'
+    if not fp.exists() or local_cfg.OVERWRITE_EXP:
+        # train the model
+        patience = 25 if dropout_p == 0.0 else 100
+        scores_per_epoch = train_model(
+            model=model,
+            criterion=loss,
+            train_loader=train_dl,
+            valid_loader=valid_dl,
+            lr=2e-4 if dropout_p == 0.0 else 1e-4,
+            n_epochs=local_cfg.MAX_N_EPOCHS,
+            patience=patience,
+            save_best_model=True,
+            save_last_model=True,
+            out_dir=out_dir,
+            label=label,
+        )
+        scores_per_epoch_df = pd.DataFrame.from_records(scores_per_epoch)
+        if local_cfg.SHOW_PLOTS:
+            n_cols = len(scores_per_epoch_df.columns)
+            plt.figure(figsize=(20, 4), dpi=120)
+            for i, k in enumerate(scores_per_epoch_df.columns):
+                plt.subplot(1, n_cols // 2, i % 3 + 1)
+                plt.plot(np.arange(len(scores_per_epoch_df)) + 1, scores_per_epoch_df[k], linewidth=2,
+                         label=k)
+                plt.xlabel('epoch')
+                plt.ylabel(k)
+                plt.legend()
+                if i < n_cols // 2:
+                    plt.grid()
+            if local_cfg.SAVE_PLOTS:
+                fn = f'learning_curve_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.png'
+                fp = Path(out_dir) / fn
+                fp.parent.mkdir(parents=True, exist_ok=True)
+                plt.savefig(fp)
+            # plt.show()
+    else:
+        print(f'{fp} already exists. Skipping the training.')
+
+    # load the model
+    fp_model = Path(out_dir) / f'model_weights_{label}_best.pt'
+    model.load_state_dict(torch.load(fp_model))
+    model.to(local_cfg.DEVICE)
 
     # compute MAE scores
     res_df_list = []
@@ -159,7 +211,7 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
         for with_noise in [False, True]:
             dl = {'train': train_dl, 'valid': valid_dl, 'test': test_dl}[fold]
 
-            n_samples = 1 if dropout_p == 0.0 else local_cfg.NUM_SAMPLES_MC_DROPOUT
+            n_samples = 1 if dropout_p == 0.0 else local_cfg.NUM_SAMPLES_MC_DROPOUT_INFERENCE
 
             # get predictions
             x = dl.dataset.tensors[0]
@@ -205,10 +257,6 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     fp = Path(out_dir) / f'stats_summary_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
     res_df_summary.to_csv(fp)
 
-    # save the model weights
-    torch.save(model.state_dict(), fp_model)
-    print(f'Model weights saved to {fp_model}')
-
 
 def run_experiment_star(settings):
     return run_experiment(**settings)
@@ -224,7 +272,7 @@ if __name__ == '__main__':
         crt_seed_split = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
         for crt_z_noise in local_cfg.Z_NOISE_LIST:
             crt_settings = {
-                'experiment_name': 'baseline',
+                'experiment_name': 'mlp',
                 'seed_model': crt_seed_model,
                 'seed_split': crt_seed_split,
                 'z_noise': crt_z_noise,
@@ -240,7 +288,7 @@ if __name__ == '__main__':
         crt_seed_split = crt_seed_model if local_cfg.USE_DIFFERENT_SPLITS_PER_SEED else local_cfg.SEED
         for crt_z_noise in local_cfg.Z_NOISE_LIST:
             crt_settings = {
-                'experiment_name': 'gaussian',
+                'experiment_name': 'mlp',
                 'seed_model': crt_seed_model,
                 'seed_split': crt_seed_split,
                 'z_noise': crt_z_noise,
@@ -274,7 +322,7 @@ if __name__ == '__main__':
             for crt_z_noise in local_cfg.Z_NOISE_LIST:
                 for crt_model_type in local_cfg.MODEL_TYPE_LIST:
                     crt_settings = {
-                        'experiment_name': 'ensemble',
+                        'experiment_name': 'ensemble_members',
                         'seed_model': crt_seed_model,
                         'seed_split': crt_seed_split,
                         'z_noise': crt_z_noise,
@@ -294,5 +342,7 @@ if __name__ == '__main__':
             run_experiment_star(crt_settings)
     else:
         with multiprocessing.Pool(num_procs) as pool:
-            for _ in tqdm(pool.imap_unordered(run_experiment_star, all_settings, chunksize=1), total=len(all_settings)):
+            for _ in tqdm(pool.imap_unordered(run_experiment_star, all_settings, chunksize=1),
+                          total=len(all_settings),
+                          position=1):
                 pass
