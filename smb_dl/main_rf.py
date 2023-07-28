@@ -4,6 +4,7 @@ from sklearn.model_selection import GridSearchCV, PredefinedSplit
 from sklearn.ensemble import RandomForestRegressor
 from pathlib import Path
 from tqdm import tqdm
+import joblib
 
 from data_utils import add_gaussian_noise, train_valid_test_split
 import config as local_cfg
@@ -44,44 +45,56 @@ if __name__ == '__main__':
             x_train = df_train.iloc[:, :-3].values
             y_train = df_train.annual_mb.values
 
-            if not use_hpo:
-                # build the model with the default parameters
-                print(f'Training RF with the default params')
-                rf_model = RandomForestRegressor(random_state=seed_model, n_jobs=-1)
-                rf_model.fit(x_train, y_train)
+            # check if the results already exist and skip if needed
+            label = f'z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
+            fp = Path(out_dir) / f'stats_{label}.csv'
+            fp_model = Path(out_dir) / f'rf_model_{label}.pkl'
+            if not fp.exists() or local_cfg.RETRAIN_MODEL_FORCE:
+                if not use_hpo:
+                    # build the model with the default parameters
+                    print(f'Training RF with the default params')
+                    rf_model = RandomForestRegressor(random_state=seed_model, n_jobs=-1)
+                    rf_model.fit(x_train, y_train)
+                else:
+                    print('Running HPO')
+                    # extract the validation data and run HPO using it
+                    x_valid = df_valid.iloc[:, :-3].values
+                    y_valid = df_valid.annual_mb.values
+
+                    # use CV with a single split
+                    split_index = [-1] * len(y_train) + [0] * len(y_valid)
+                    x = np.concatenate((x_train, x_valid), axis=0)
+                    y = np.concatenate((y_train, y_valid), axis=0)
+                    pds = PredefinedSplit(test_fold=split_index)
+                    hpo = GridSearchCV(
+                        estimator=RandomForestRegressor(random_state=seed_model, n_jobs=8),
+                        param_grid=params_grid,
+                        scoring='neg_mean_absolute_error',
+                        verbose=True,
+                        n_jobs=-1,
+                        cv=pds,
+                        return_train_score=True,
+                        refit=False,
+                    )
+                    hpo.fit(x, y)
+
+                    # export the results
+                    cv_results_df = pd.DataFrame(hpo.cv_results_).sort_values('rank_test_score')
+                    print(cv_results_df)
+                    fp = Path(out_dir) / f'hpo_results_{label}.csv'
+                    cv_results_df.to_csv(fp, index=False)
+
+                    # fit the model with the best parameters
+                    print(f'Training RF with best params: {hpo.best_params_}')
+                    rf_model = RandomForestRegressor(**hpo.best_params_, n_jobs=-1, random_state=seed_model)
+                    rf_model.fit(x_train, y_train)
+
+                # export the model
+                joblib.dump(rf_model, filename=fp_model)
             else:
-                print('Running HPO')
-                # extract the validation data and run HPO using it
-                x_valid = df_valid.iloc[:, :-3].values
-                y_valid = df_valid.annual_mb.values
-
-                # use CV with a single split
-                split_index = [-1] * len(y_train) + [0] * len(y_valid)
-                x = np.concatenate((x_train, x_valid), axis=0)
-                y = np.concatenate((y_train, y_valid), axis=0)
-                pds = PredefinedSplit(test_fold=split_index)
-                hpo = GridSearchCV(
-                    estimator=RandomForestRegressor(random_state=seed_model, n_jobs=8),
-                    param_grid=params_grid,
-                    scoring='neg_mean_absolute_error',
-                    verbose=True,
-                    n_jobs=-1,
-                    cv=pds,
-                    return_train_score=True,
-                    refit=False,
-                )
-                hpo.fit(x, y)
-
-                # export the results
-                cv_results_df = pd.DataFrame(hpo.cv_results_).sort_values('rank_test_score')
-                print(cv_results_df)
-                fp = Path(out_dir) / f'hpo_results_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
-                cv_results_df.to_csv(fp, index=False)
-
-                # fit the model with the best parameters
-                print(f'Training RF with best params: {hpo.best_params_}')
-                rf_model = RandomForestRegressor(**hpo.best_params_, n_jobs=-1, random_state=seed_model)
-                rf_model.fit(x_train, y_train)
+                print(f'{fp} already exists. Skipping the training.')
+                # load the model
+                rf_model = joblib.load(filename=fp_model)
 
             # compute MAE scores
             res_df_list = []

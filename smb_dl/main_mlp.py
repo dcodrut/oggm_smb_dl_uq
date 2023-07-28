@@ -162,7 +162,7 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     # check if the results already exist and skip if needed
     label = f'z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
     fp = Path(out_dir) / f'stats_{label}.csv'
-    if not fp.exists() or local_cfg.OVERWRITE_EXP:
+    if not fp.exists() or local_cfg.RETRAIN_MODEL_FORCE:
         # train the model
         patience = 25 if dropout_p == 0.0 else 100
         scores_per_epoch = train_model(
