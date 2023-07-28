@@ -11,7 +11,7 @@ def add_gaussian_noise(df_annual, min_z_noise: float = 0.1, max_z_noise: float =
     _scale = z_noise * np.std(df_annual.annual_mb)
     rng = np.random.default_rng(seed)
     label_noise = rng.normal(loc=0, scale=_scale)
-    df_annual['annual_smb_orig'] = df_annual.annual_mb
+    df_annual['annual_mb_orig'] = df_annual.annual_mb
     df_annual['label_noise'] = label_noise
     df_annual.annual_mb += label_noise
     return df_annual

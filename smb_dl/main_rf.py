@@ -5,6 +5,7 @@ from sklearn.ensemble import RandomForestRegressor
 from pathlib import Path
 from tqdm import tqdm
 
+from data_utils import add_gaussian_noise, train_valid_test_split
 import config as local_cfg
 
 if __name__ == '__main__':
@@ -13,11 +14,7 @@ if __name__ == '__main__':
     out_dir = res_dir_root / 'baseline' / 'rf'
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    # read the training data
-    data_df = pd.read_csv(local_cfg.FP_SMB_DATA_PROCESSED)
-    data_df = data_df.set_index(['gid', 'year'])
-
-    use_hpo = False
+    use_hpo = True
     params_grid = {
         'n_estimators': [100, 500],
         'max_features': ['sqrt', 1.0],
@@ -25,20 +22,27 @@ if __name__ == '__main__':
         'min_samples_split': [10, 5, 2]
     }
 
-    for z_score in local_cfg.Z_NOISE_LIST:
-        pbar = tqdm(range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS), desc=f'z_score = {z_score}')
+    for z_noise in local_cfg.Z_NOISE_LIST:
+        pbar = tqdm(range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS), desc=f'z_noise = {z_noise}')
         for seed_model in pbar:
             seed_split = seed_model
-            out_dir_baseline = res_dir_root / 'baseline' / 'standard'
-            fn = f'stats_z_{z_score:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
-            fp = out_dir_baseline / fn
-            res_df_mlp = pd.read_csv(fp)
 
-            # prepare the training data using the same splits as for the MLP
-            res_df_mlp_train = res_df_mlp[(res_df_mlp.fold == 'train') & res_df_mlp.with_noise]
-            df_train = data_df.iloc[res_df_mlp_train.idx]
-            x_train = df_train.iloc[:, :-1].values
-            y_train = res_df_mlp_train.y_true.values
+            # prepare the training data
+            df = pd.read_csv(local_cfg.FP_SMB_DATA_PROCESSED)
+            df = df.set_index(['gid', 'year'])
+
+            # add noise
+            df_noisy = add_gaussian_noise(df, min_z_noise=z_noise, max_z_noise=z_noise, seed=seed_model)
+
+            print(f'\n\nSettings: seed_model = {seed_model}; seed_split = {seed_split}; z_noise = {z_noise}\n')
+            print(df_noisy)
+            df_train, df_valid, df_test, idx_train, idx_valid, idx_test = train_valid_test_split(
+                df_annual=df_noisy,
+                seed=seed_split
+            )
+
+            x_train = df_train.iloc[:, :-3].values
+            y_train = df_train.annual_mb.values
 
             if not use_hpo:
                 # build the model with the default parameters
@@ -48,10 +52,8 @@ if __name__ == '__main__':
             else:
                 print('Running HPO')
                 # extract the validation data and run HPO using it
-                res_df_mlp_valid = res_df_mlp[(res_df_mlp.fold == 'valid') & res_df_mlp.with_noise]
-                df_valid = data_df.iloc[res_df_mlp_valid.idx]
-                x_valid = df_valid.iloc[:, :-1].values
-                y_valid = res_df_mlp_valid.y_true.values
+                x_valid = df_valid.iloc[:, :-3].values
+                y_valid = df_valid.annual_mb.values
 
                 # use CV with a single split
                 split_index = [-1] * len(y_train) + [0] * len(y_valid)
@@ -59,7 +61,7 @@ if __name__ == '__main__':
                 y = np.concatenate((y_train, y_valid), axis=0)
                 pds = PredefinedSplit(test_fold=split_index)
                 hpo = GridSearchCV(
-                    estimator=RandomForestRegressor(random_state=seed_model, n_jobs=-1),
+                    estimator=RandomForestRegressor(random_state=seed_model, n_jobs=8),
                     param_grid=params_grid,
                     scoring='neg_mean_absolute_error',
                     verbose=True,
@@ -73,7 +75,7 @@ if __name__ == '__main__':
                 # export the results
                 cv_results_df = pd.DataFrame(hpo.cv_results_).sort_values('rank_test_score')
                 print(cv_results_df)
-                fp = Path(out_dir) / f'hpo_results_z_{z_score:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
+                fp = Path(out_dir) / f'hpo_results_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
                 cv_results_df.to_csv(fp, index=False)
 
                 # fit the model with the best parameters
@@ -83,23 +85,24 @@ if __name__ == '__main__':
 
             # compute MAE scores
             res_df_list = []
+
             for fold in ['train', 'valid', 'test']:
                 for with_noise in [False, True]:
                     # get the data for the current fold
-                    res_df_mlp_crt_fold = res_df_mlp[(res_df_mlp.fold == fold) & (res_df_mlp.with_noise == with_noise)]
-                    idx = res_df_mlp_crt_fold.idx
-                    x = data_df.iloc[idx, :-1].values
-                    y_true = res_df_mlp_crt_fold.y_true.values
+                    df_noisy_crt_fold = {'train': df_train, 'valid': df_valid, 'test': df_test}[fold]
+                    x = df_noisy_crt_fold.iloc[:, :-3].values
+                    y_true_col = 'annual_mb' if with_noise else 'annual_mb_orig'
+                    y_true = df_noisy_crt_fold[y_true_col].values
+                    noise = df_noisy_crt_fold['label_noise'].values
 
                     # get predictions
                     y_pred = rf_model.predict(x)
                     y_std = np.std(np.vstack([t.predict(x) for t in rf_model.estimators_]), axis=0)
-                    noise = res_df_mlp_crt_fold.noise.values
                     mae_scores = np.abs(y_pred - y_true)
                     res_df = pd.DataFrame(
                         {
                             'fold': fold,
-                            'idx': idx,
+                            'idx': {'train': idx_train, 'valid': idx_valid, 'test': idx_test}[fold],
                             'with_noise': with_noise,
                             'noise': noise,
                             'y_true': y_true,
@@ -112,10 +115,10 @@ if __name__ == '__main__':
 
             res_df = pd.concat(res_df_list)
             res_df_summary = res_df.groupby(['fold', 'with_noise']).mae.describe()
-            print(f'MAE stats (z_score = {z_score}; seed_model = {seed_model}):')
+            print(f'MAE stats (z_noise = {z_noise}; seed_model = {seed_model}):')
             print(res_df_summary)
 
-            fp = Path(out_dir) / f'stats_z_{z_score:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
+            fp = Path(out_dir) / f'stats_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
             res_df.to_csv(fp, index=False)
-            fp = Path(out_dir) / f'stats_summary_z_{z_score:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
+            fp = Path(out_dir) / f'stats_summary_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
             res_df_summary.to_csv(fp)
