@@ -1,11 +1,12 @@
 import torch
 
-SEED = 42  # check available device
+SEED = 42
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 DATA_DIR = '../data'
 OGGM_WD = DATA_DIR + '/oggm_wd'
 OGGM_OUT_DIR = DATA_DIR + '/oggm_out'
-RESULTS_DIR = DATA_DIR + '/results/'
+RESULTS_TRAINING_DIR = DATA_DIR + '/results/training'
+RESULTS_INFERENCE_DIR = DATA_DIR + '/results/inference_iid'
 
 N_GLACIERS = 500  # how many glaciers to use (the largest have priority)
 FP_SMB_DATA_RAW = OGGM_OUT_DIR + f'/oggm_smb_{N_GLACIERS}_glaciers_raw.csv'

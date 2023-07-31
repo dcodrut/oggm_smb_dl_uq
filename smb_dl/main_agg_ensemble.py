@@ -6,7 +6,7 @@ from tqdm import tqdm
 import config as local_cfg
 
 if __name__ == '__main__':
-    res_dir_root = Path(local_cfg.RESULTS_DIR)
+    res_dir_root = Path(local_cfg.RESULTS_INFERENCE_DIR)
 
     for model_name in local_cfg.MODEL_TYPE_LIST:
         res_dir = res_dir_root / 'ensemble_members' / model_name
@@ -18,7 +18,8 @@ if __name__ == '__main__':
                 # read the outputs from all ensemble members
                 res_df_list = []
                 for seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
-                    fp = res_dir / f'stats_z_{z_score:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
+                    label = f'z_{z_score:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
+                    fp = res_dir / 'stats' / f'stats_{label}.csv'
                     res_df = pd.read_csv(fp)
                     res_df['seed_model'] = seed_model
                     res_df_list.append(res_df)
@@ -41,14 +42,10 @@ if __name__ == '__main__':
 
                 # compute MAE scores based on the average predictions
                 res_df['mae'] = (res_df.y_pred - res_df.y_true).abs()
-
-                res_df_summary = res_df.groupby(['fold', 'with_noise']).mae.describe()
                 print(f'MAE - ensemble (model_name = {model_name}; z_score = {z_score}; seed_split = {seed_split}):')
-                print(res_df_summary)
+                print(res_df.groupby(['fold', 'with_noise']).mae.describe())
 
                 out_dir = res_dir_root / 'ensemble' / model_name
-                out_dir.mkdir(parents=True, exist_ok=True)
-                fp = out_dir / f'stats_z_{z_score:.2f}_seed_model_all_seed_split_{seed_split}.csv'
+                fp = out_dir / 'stats' / f'stats_z_{z_score:.2f}_seed_model_all_seed_split_{seed_split}.csv'
+                fp.parent.mkdir(parents=True, exist_ok=True)
                 res_df.to_csv(fp, index=False)
-                fp = out_dir / f'stats_summary_z_{z_score:.2f}_seed_model_all_seed_split_{seed_split}.csv'
-                res_df_summary.to_csv(fp)

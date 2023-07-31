@@ -10,12 +10,11 @@ from data_utils import add_gaussian_noise, train_valid_test_split
 import config as local_cfg
 
 if __name__ == '__main__':
-    res_dir_root = Path(local_cfg.RESULTS_DIR)
-
-    out_dir = res_dir_root / 'baseline' / 'rf'
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    training_dir = Path(local_cfg.RESULTS_TRAINING_DIR) / 'baseline' / 'rf'
+    inference_dir = Path(local_cfg.RESULTS_INFERENCE_DIR) / 'baseline' / 'rf'
 
     use_hpo = True
+
     params_grid = {
         'n_estimators': [100, 500],
         'max_features': ['sqrt', 1.0],
@@ -47,9 +46,8 @@ if __name__ == '__main__':
 
             # check if the results already exist and skip if needed
             label = f'z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
-            fp = Path(out_dir) / f'stats_{label}.csv'
-            fp_model = Path(out_dir) / f'rf_model_{label}.pkl'
-            if not fp.exists() or local_cfg.RETRAIN_MODEL_FORCE:
+            fp_model = Path(training_dir) / 'models' / f'rf_model_{label}.pkl'
+            if not fp_model.exists() or local_cfg.RETRAIN_MODEL_FORCE:
                 if not use_hpo:
                     # build the model with the default parameters
                     print(f'Training RF with the default params')
@@ -81,7 +79,8 @@ if __name__ == '__main__':
                     # export the results
                     cv_results_df = pd.DataFrame(hpo.cv_results_).sort_values('rank_test_score')
                     print(cv_results_df)
-                    fp = Path(out_dir) / f'hpo_results_{label}.csv'
+                    fp = Path(training_dir) / 'hpo_results' / f'hpo_results_{label}.csv'
+                    fp.parent.mkdir(parents=True, exist_ok=True)
                     cv_results_df.to_csv(fp, index=False)
 
                     # fit the model with the best parameters
@@ -90,9 +89,10 @@ if __name__ == '__main__':
                     rf_model.fit(x_train, y_train)
 
                 # export the model
+                fp_model.parent.mkdir(parents=True, exist_ok=True)
                 joblib.dump(rf_model, filename=fp_model)
             else:
-                print(f'{fp} already exists. Skipping the training.')
+                print(f'{fp_model} already exists. Skipping the training.')
                 # load the model
                 rf_model = joblib.load(filename=fp_model)
 
@@ -127,11 +127,9 @@ if __name__ == '__main__':
                     res_df_list.append(res_df)
 
             res_df = pd.concat(res_df_list)
-            res_df_summary = res_df.groupby(['fold', 'with_noise']).mae.describe()
             print(f'MAE stats (z_noise = {z_noise}; seed_model = {seed_model}):')
-            print(res_df_summary)
+            print(res_df.groupby(['fold', 'with_noise']).mae.describe())
 
-            fp = Path(out_dir) / f'stats_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
+            fp = Path(inference_dir) / 'stats' / f'stats_{label}.csv'
+            fp.parent.mkdir(parents=True, exist_ok=True)
             res_df.to_csv(fp, index=False)
-            fp = Path(out_dir) / f'stats_summary_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
-            res_df_summary.to_csv(fp)

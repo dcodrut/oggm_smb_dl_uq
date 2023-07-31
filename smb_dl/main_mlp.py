@@ -90,7 +90,7 @@ def train_model(
                 if save_best_model and i_epoch > 1:
                     best_mae_so_far = np.mean([x['valid_MAE'] for x in scores_per_epoch[:-1]])
                     if mae < best_mae_so_far:
-                        fp_model = Path(out_dir) / f'model_weights_{label}_best.pt'
+                        fp_model = Path(out_dir) / 'models' / f'model_weights_{label}_best.pt'
                         fp_model.parent.mkdir(parents=True, exist_ok=True)
                         torch.save(model.state_dict(), fp_model)
 
@@ -113,7 +113,7 @@ def train_model(
                 break
 
     if save_last_model:
-        fp_model = Path(out_dir) / f'model_weights_{label}_last.pt'
+        fp_model = Path(out_dir) / 'models' / f'model_weights_{label}_last.pt'
         fp_model.parent.mkdir(parents=True, exist_ok=True)
         torch.save(model.state_dict(), fp_model)
 
@@ -123,7 +123,8 @@ def train_model(
 def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, experiment_name=''):
     df_annual = pd.read_csv(local_cfg.FP_SMB_DATA_PROCESSED)
     df_annual = df_annual.set_index(['gid', 'year'])
-    out_dir = Path(local_cfg.RESULTS_DIR) / experiment_name / model_type
+    training_dir = Path(local_cfg.RESULTS_TRAINING_DIR) / experiment_name / model_type
+    inference_dir = Path(local_cfg.RESULTS_INFERENCE_DIR) / experiment_name / model_type
 
     # add noise to the data
     df_annual = add_gaussian_noise(df_annual, min_z_noise=z_noise, max_z_noise=z_noise, seed=seed_model)
@@ -161,21 +162,21 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
 
     # check if the results already exist and skip if needed
     label = f'z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
-    fp = Path(out_dir) / f'stats_{label}.csv'
-    if not fp.exists() or local_cfg.RETRAIN_MODEL_FORCE:
+    fp_model = Path(training_dir) / 'models' / f'model_weights_{label}_best.pt'
+    if not fp_model.exists() or local_cfg.RETRAIN_MODEL_FORCE:
         # train the model
-        patience = 25 if dropout_p == 0.0 else 100
+        patience = 100
         scores_per_epoch = train_model(
             model=model,
             criterion=loss,
             train_loader=train_dl,
             valid_loader=valid_dl,
-            lr=2e-4 if dropout_p == 0.0 else 1e-4,
+            lr=1e-4,
             n_epochs=local_cfg.MAX_N_EPOCHS,
             patience=patience,
             save_best_model=True,
             save_last_model=True,
-            out_dir=out_dir,
+            out_dir=training_dir,
             label=label,
         )
         scores_per_epoch_df = pd.DataFrame.from_records(scores_per_epoch)
@@ -192,16 +193,15 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
                 if i < n_cols // 2:
                     plt.grid()
             if local_cfg.SAVE_PLOTS:
-                fn = f'learning_curve_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.png'
-                fp = Path(out_dir) / fn
+                fn = f'learning_curve_{label}.png'
+                fp = Path(training_dir) / 'learning_curves' / fn
                 fp.parent.mkdir(parents=True, exist_ok=True)
                 plt.savefig(fp)
             # plt.show()
     else:
-        print(f'{fp} already exists. Skipping the training.')
+        print(f'{fp_model} already exists. Skipping the training.')
 
     # load the model
-    fp_model = Path(out_dir) / f'model_weights_{label}_best.pt'
     model.load_state_dict(torch.load(fp_model))
     model.to(local_cfg.DEVICE)
 
@@ -248,14 +248,11 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
             res_df_list.append(res_df)
 
     res_df = pd.concat(res_df_list)
-    res_df_summary = res_df.groupby(['fold', 'with_noise']).mae.describe()
     print('MAE stats:')
-    print(res_df_summary)
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-    fp = Path(out_dir) / f'stats_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
+    print(res_df.groupby(['fold', 'with_noise']).mae.describe())
+    fp = Path(inference_dir) / 'stats' / f'stats_{label}.csv'
+    fp.parent.mkdir(parents=True, exist_ok=True)
     res_df.to_csv(fp, index=False)
-    fp = Path(out_dir) / f'stats_summary_z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}.csv'
-    res_df_summary.to_csv(fp)
 
 
 def run_experiment_star(settings):
@@ -317,8 +314,8 @@ if __name__ == '__main__':
 
     # 4. Ensemble - both with and without Gaussian output
     settings_ensemble = []
-    for crt_seed_split in range(local_cfg.SEED, local_cfg.SEED + local_cfg.ENSEMBLE_SIZE):
-        for crt_seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
+    for crt_seed_split in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
+        for crt_seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.ENSEMBLE_SIZE):
             for crt_z_noise in local_cfg.Z_NOISE_LIST:
                 for crt_model_type in local_cfg.MODEL_TYPE_LIST:
                     crt_settings = {
