@@ -41,7 +41,7 @@ if __name__ == '__main__':
                 seed=seed_split
             )
 
-            x_train = df_train.iloc[:, :-3].values
+            x_train = df_train[local_cfg.INPUT_COLS].values
             y_train = df_train.annual_mb.values
 
             # check if the results already exist and skip if needed
@@ -56,7 +56,7 @@ if __name__ == '__main__':
                 else:
                     print('Running HPO')
                     # extract the validation data and run HPO using it
-                    x_valid = df_valid.iloc[:, :-3].values
+                    x_valid = df_valid[local_cfg.INPUT_COLS].values
                     y_valid = df_valid.annual_mb.values
 
                     # use CV with a single split
@@ -103,7 +103,7 @@ if __name__ == '__main__':
                 for with_noise in [False, True]:
                     # get the data for the current fold
                     df_noisy_crt_fold = {'train': df_train, 'valid': df_valid, 'test': df_test}[fold]
-                    x = df_noisy_crt_fold.iloc[:, :-3].values
+                    x = df_noisy_crt_fold[local_cfg.INPUT_COLS].values
                     y_true_col = 'annual_mb' if with_noise else 'annual_mb_orig'
                     y_true = df_noisy_crt_fold[y_true_col].values
                     noise = df_noisy_crt_fold['label_noise'].values
@@ -133,3 +133,4 @@ if __name__ == '__main__':
             fp = Path(inference_dir) / 'stats' / f'stats_{label}.csv'
             fp.parent.mkdir(parents=True, exist_ok=True)
             res_df.to_csv(fp, index=False)
+            print(f'Results exported to {fp}')

@@ -63,9 +63,9 @@ def get_smb_data_tensors(df_train, df_valid, df_test, input_cols, output_col):
     return x_train, y_train, x_valid, y_valid, x_test, y_test
 
 
-def standardize_data(df_train, x_train, x_valid, x_test):
+def standardize_data(df_train_for_norm, x_train, x_valid, x_test):
     # scale the data in groups, to keep the relative distance
-    cols = list(df_train.columns)
+    cols = list(df_train_for_norm.columns)
     f_groups = [
         [c for c in cols if 'temp' in c],
         [c for c in cols if 'prcp' in c],
@@ -73,8 +73,11 @@ def standardize_data(df_train, x_train, x_valid, x_test):
     ]
 
     for f_group in f_groups:
-        idx = [cols.index(c) for c in f_group]
-        _mu, _std = x_train[:, idx].mean(), x_train[:, idx].std()
+        idx = [cols.index(c) for c in f_group if c in cols]
+        if len(idx) == 0:  # current group is missing
+            continue
+        _vals = df_train_for_norm.iloc[:, idx].values.flatten()
+        _mu, _std = _vals.mean(), _vals.std()
 
         x_train[:, idx] -= _mu
         x_train[:, idx] /= _std

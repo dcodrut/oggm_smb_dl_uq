@@ -17,7 +17,7 @@ if __name__ == '__main__':
             for seed_split in pbar:
                 # read the outputs from all ensemble members
                 res_df_list = []
-                for seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS):
+                for seed_model in range(local_cfg.SEED, local_cfg.SEED + local_cfg.ENSEMBLE_SIZE):
                     label = f'z_{z_score:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
                     fp = res_dir / 'stats' / f'stats_{label}.csv'
                     res_df = pd.read_csv(fp)

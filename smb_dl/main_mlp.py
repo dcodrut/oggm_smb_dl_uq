@@ -136,12 +136,15 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
 
     x_train, y_train, x_valid, y_valid, x_test, y_test, = get_smb_data_tensors(
         df_train, df_valid, df_test,
-        input_cols=list(df_annual.columns)[:-3],
+        input_cols=local_cfg.INPUT_COLS,
         output_col='annual_mb'
     )
 
+    # prepare the dataframe used for normalizing the features
+    df_train_for_norm = pd.read_csv(local_cfg.FP_SMB_DATA_PROCESSED_FOR_NORM).iloc[idx_train][local_cfg.INPUT_COLS]
+
     # scale the features
-    x_train, x_valid, x_test = standardize_data(df_train, x_train, x_valid, x_test)
+    x_train, x_valid, x_test = standardize_data(df_train_for_norm, x_train, x_valid, x_test)
 
     # prepare the dataloaders
     train_dl = DataLoader(TensorDataset(x_train, y_train), batch_size=local_cfg.BATCH_SIZE, num_workers=0)
@@ -162,7 +165,7 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
 
     # check if the results already exist and skip if needed
     label = f'z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
-    fp_model = Path(training_dir) / 'models' / f'model_weights_{label}_best.pt'
+    fp_model = Path(training_dir) / 'models' / f'model_weights_{label}_last.pt'
     if not fp_model.exists() or local_cfg.RETRAIN_MODEL_FORCE:
         # train the model
         patience = 100
@@ -201,7 +204,8 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     else:
         print(f'{fp_model} already exists. Skipping the training.')
 
-    # load the model
+    # load the best model
+    fp_model = Path(training_dir) / 'models' / f'model_weights_{label}_best.pt'
     model.load_state_dict(torch.load(fp_model))
     model.to(local_cfg.DEVICE)
 
@@ -339,7 +343,7 @@ if __name__ == '__main__':
             run_experiment_star(crt_settings)
     else:
         with multiprocessing.Pool(num_procs) as pool:
-            for _ in tqdm(pool.imap_unordered(run_experiment_star, all_settings, chunksize=1),
+            for _ in tqdm(pool.imap(run_experiment_star, all_settings, chunksize=1),
                           total=len(all_settings),
                           position=1):
                 pass
