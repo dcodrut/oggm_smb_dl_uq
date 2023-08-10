@@ -147,9 +147,12 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     x_train, x_valid, x_test = standardize_data(df_train_for_norm, x_train, x_valid, x_test)
 
     # prepare the dataloaders
-    train_dl = DataLoader(TensorDataset(x_train, y_train), batch_size=local_cfg.BATCH_SIZE, num_workers=0)
-    valid_dl = DataLoader(TensorDataset(x_valid, y_valid), batch_size=local_cfg.BATCH_SIZE, num_workers=0)
-    test_dl = DataLoader(TensorDataset(x_test, y_test), batch_size=local_cfg.BATCH_SIZE, num_workers=0)
+    train_dl = DataLoader(
+        TensorDataset(x_train, y_train), batch_size=local_cfg.BATCH_SIZE, num_workers=0, shuffle=True)
+    valid_dl = DataLoader(
+        TensorDataset(x_valid, y_valid), batch_size=local_cfg.BATCH_SIZE, num_workers=0, shuffle=True)
+    test_dl = DataLoader(
+        TensorDataset(x_test, y_test), batch_size=local_cfg.BATCH_SIZE, num_workers=0, shuffle=True)
 
     print(pd.Series(y_train.cpu().numpy().flatten()).describe())
 
