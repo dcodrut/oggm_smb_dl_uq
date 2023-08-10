@@ -46,7 +46,7 @@ if __name__ == '__main__':
     # download RGI outlines
     utils.get_rgi_dir(version='62')
 
-    fp = utils.get_rgi_region_file('11', version='62')
+    fp = utils.get_rgi_region_file(region=local_cfg.RGI_REGION, version='62')
     gdf_all = gpd.read_file(fp)
     gdf_all = gdf_all.sort_values('Area', ascending=False)
 
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     cfg.PARAMS['use_intersects'] = False
     cfg.PARAMS['border'] = 80
 
-    num_glaciers = 500  # how many glaciers to simulate (the largest in the region will be used)
+    num_glaciers = local_cfg.N_GLACIERS  # how many glaciers to simulate (the largest in the region will be used)
     crt_k = 1
     i = 0
     pbar = tqdm(total=num_glaciers)
@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
         # compute the specific MB for both the original input data and the noisy version
         fls = gdir.read_pickle('model_flowlines')
-        y0, y1 = 1980, 2020
+        y0, y1 = 2000, 2020
         years = np.arange(y0, y1)
         mb_ts_orig = mbmod.get_specific_mb(fls=fls, year=years)
 

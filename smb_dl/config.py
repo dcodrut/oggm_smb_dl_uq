@@ -4,11 +4,12 @@ SEED = 42
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 DATA_DIR = '../data'
 OGGM_WD = DATA_DIR + '/oggm_wd'
-OGGM_OUT_DIR = DATA_DIR + '/oggm_out'
+RGI_REGION = '11'
+OGGM_OUT_DIR = DATA_DIR + f'/oggm_out_final/rgi_{RGI_REGION}'
 RESULTS_TRAINING_DIR = DATA_DIR + '/results/training'
 RESULTS_INFERENCE_DIR = DATA_DIR + '/results/inference_iid'
 
-N_GLACIERS = 500  # how many glaciers to use (the largest have priority)
+N_GLACIERS = 1000  # how many glaciers to use (the largest have priority)
 FP_SMB_DATA_RAW = OGGM_OUT_DIR + f'/oggm_smb_{N_GLACIERS}_glaciers_raw.csv'
 FP_SMB_DATA_PROCESSED = OGGM_OUT_DIR + f'/oggm_smb_{N_GLACIERS}_glaciers_processed.csv'
 FP_SMB_DATA_PROCESSED_FOR_NORM = DATA_DIR + f'/oggm_out_final/rgi_11/oggm_smb_{N_GLACIERS}_glaciers_processed.csv'
