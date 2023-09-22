@@ -1,21 +1,20 @@
+Z_NOISE_LIST = [0.1, 0.2, 0.3, 0.4, 0.5]
 import torch
 
 SEED = 42
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-DATA_DIR = '../data'
-OGGM_WD = DATA_DIR + '/oggm_wd'
-RGI_REGION = '11'
-OGGM_OUT_DIR = DATA_DIR + f'/oggm_out_final/rgi_{RGI_REGION}'
-RESULTS_TRAINING_DIR = DATA_DIR + '/results/training'
-RESULTS_INFERENCE_DIR = DATA_DIR + '/results/inference_iid'
+DATA_DIR = '../data/'
+
+RESULTS_TRAINING_DIR = DATA_DIR + '/output/results/final/training'
+RESULTS_INFERENCE_DIR = DATA_DIR + '/output/results/final/inference_iid'
 
 N_GLACIERS = 1000  # how many glaciers to use (the largest have priority)
-FP_SMB_DATA_RAW = OGGM_OUT_DIR + f'/oggm_smb_{N_GLACIERS}_glaciers_raw.csv'
-FP_SMB_DATA_PROCESSED = OGGM_OUT_DIR + f'/oggm_smb_{N_GLACIERS}_glaciers_processed.csv'
-FP_SMB_DATA_PROCESSED_FOR_NORM = DATA_DIR + f'/oggm_out_final/rgi_11/oggm_smb_{N_GLACIERS}_glaciers_processed.csv'
-BATCH_SIZE = 512
+FP_SMB_DATA_PROCESSED = DATA_DIR + f'/oggm_smb_{N_GLACIERS}_glaciers_processed.csv'
+FP_SMB_DATA_PROCESSED_FOR_NORM = FP_SMB_DATA_PROCESSED
+BATCH_SIZE = 128
 MAX_N_EPOCHS = 6000
-Z_NOISE_LIST = [0.0, 0.1, 0.2, 0.3]
+LEARNING_RATE = 0.0004
+PATIENCE = 200
 MODEL_TYPE_LIST = ['standard', 'gaussian']
 DROPOUT_P = 0.2
 NUM_SAMPLES_MC_DROPOUT_TRAINING = 20
@@ -30,7 +29,5 @@ RETRAIN_MODEL_FORCE = False
 INPUT_COLS = (
         [f'temp_{m:02d}' for m in range(1, 13)] +
         [f'prcp_{m:02d}' for m in range(1, 13)] +
-        ['lon', 'lat', 'area', 'z_min', 'z_max', 'z_med', 'slope', 'aspect_sin', 'aspect_cos']  # all features
-        # ['area', 'z_min', 'z_max', 'z_med', 'slope', 'aspect_sin', 'aspect_cos'] # drop the coords
-        # ['z_min', 'z_max', 'z_med']  # the minimum features
+        ['area', 'z_min', 'z_max', 'z_med', 'slope', 'aspect_sin', 'aspect_cos']  # drop the coords
 )

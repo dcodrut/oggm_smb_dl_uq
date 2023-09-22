@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -22,7 +24,9 @@ def train_model(
         save_best_model=False,
         save_last_model=False,
         out_dir=None,
-        label=''):
+        label='',
+        device=local_cfg.DEVICE,
+):
     """
     :param model: model to be trained
     :param criterion: loss function
@@ -35,11 +39,12 @@ def train_model(
     :param save_last_model: whether to save the last model
     :param out_dir: the directory path where to save the model's weights
     :param label: a label to be added in the filename when saving the model's weights
+    :param device: device to train on (e.g. torch.device('cpu'), torch.device('gpu'), torch.device('gpu:1') etc.)
     :return: the scores per epoch (can be used for plotting the learning curves)
     """
 
     scores_per_epoch = []
-    model = model.to(local_cfg.DEVICE)
+    model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     pbar = trange(n_epochs)
     for i_epoch in pbar:
@@ -120,7 +125,7 @@ def train_model(
     return scores_per_epoch
 
 
-def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, experiment_name=''):
+def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, experiment_name='', device=local_cfg.DEVICE):
     df_annual = pd.read_csv(local_cfg.FP_SMB_DATA_PROCESSED)
     df_annual = df_annual.set_index(['gid', 'year'])
     training_dir = Path(local_cfg.RESULTS_TRAINING_DIR) / experiment_name / model_type
@@ -137,7 +142,8 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     x_train, y_train, x_valid, y_valid, x_test, y_test, = get_smb_data_tensors(
         df_train, df_valid, df_test,
         input_cols=local_cfg.INPUT_COLS,
-        output_col='annual_mb'
+        output_col='annual_mb',
+        device=device
     )
 
     # prepare the dataframe used for normalizing the features
@@ -171,20 +177,22 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
     fp_model = Path(training_dir) / 'models' / f'model_weights_{label}_last.pt'
     if not fp_model.exists() or local_cfg.RETRAIN_MODEL_FORCE:
         # train the model
-        patience = 100
-        scores_per_epoch = train_model(
+        params = dict(
             model=model,
             criterion=loss,
             train_loader=train_dl,
             valid_loader=valid_dl,
-            lr=1e-4,
+            lr=local_cfg.LEARNING_RATE,
             n_epochs=local_cfg.MAX_N_EPOCHS,
-            patience=patience,
+            patience=local_cfg.PATIENCE,
             save_best_model=True,
             save_last_model=True,
             out_dir=training_dir,
             label=label,
+            device=device
         )
+        print(f'Training model with params: {params}')
+        scores_per_epoch = train_model(**params)
         scores_per_epoch_df = pd.DataFrame.from_records(scores_per_epoch)
         if local_cfg.SHOW_PLOTS:
             n_cols = len(scores_per_epoch_df.columns)
@@ -209,8 +217,8 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
 
     # load the best model
     fp_model = Path(training_dir) / 'models' / f'model_weights_{label}_best.pt'
-    model.load_state_dict(torch.load(fp_model))
-    model.to(local_cfg.DEVICE)
+    model.load_state_dict(torch.load(fp_model, map_location=device))
+    model.to(device)
 
     # compute MAE scores
     res_df_list = []

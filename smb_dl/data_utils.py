@@ -43,7 +43,7 @@ def train_valid_test_split(df_annual, test_fraction=0.2, valid_fraction=0.1, see
     return df_train, df_valid, df_test, idx_train_valid[idx_train], idx_train_valid[idx_valid], idx_test
 
 
-def get_smb_data_tensors(df_train, df_valid, df_test, input_cols, output_col):
+def get_smb_data_tensors(df_train, df_valid, df_test, input_cols, output_col, device):
     x_train = df_train[input_cols].values
     y_train = df_train[output_col].values
     x_valid = df_valid[input_cols].values
@@ -52,12 +52,12 @@ def get_smb_data_tensors(df_train, df_valid, df_test, input_cols, output_col):
     y_test = df_test[output_col].values
 
     # switch to tensors
-    x_train = torch.Tensor(x_train).to(local_cfg.DEVICE)
-    y_train = torch.Tensor(y_train).to(local_cfg.DEVICE).unsqueeze(1)
-    x_valid = torch.Tensor(x_valid).to(local_cfg.DEVICE)
-    y_valid = torch.Tensor(y_valid).to(local_cfg.DEVICE).unsqueeze(1)
-    x_test = torch.Tensor(x_test).to(local_cfg.DEVICE)
-    y_test = torch.Tensor(y_test).to(local_cfg.DEVICE).unsqueeze(1)
+    x_train = torch.Tensor(x_train).to(device)
+    y_train = torch.Tensor(y_train).to(device).unsqueeze(1)
+    x_valid = torch.Tensor(x_valid).to(device)
+    y_valid = torch.Tensor(y_valid).to(device).unsqueeze(1)
+    x_test = torch.Tensor(x_test).to(device)
+    y_test = torch.Tensor(y_test).to(device).unsqueeze(1)
 
     # data loaders
     return x_train, y_train, x_valid, y_valid, x_test, y_test
