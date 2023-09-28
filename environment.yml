@@ -1,41 +1,17 @@
-name: oggm_env
+name: smbuqenv
 channels:
   - conda-forge
 dependencies:
-  - jupyter
-  - jupyterlab
-  - numpy
-  - scipy
-  - pandas
-  - shapely
-  - matplotlib
-  - Pillow
-  - netcdf4
-  - scikit-image
-  - scikit-learn
-  - configobj
-  - xarray
-  - pytest
-  - dask
-  - bottleneck
-  - pyproj
-  - cartopy
-  - geopandas
-  - rasterio<1.2.10
-  - rioxarray
-  - seaborn
-  - pytables
-  - salem
-  - motionless
-  - sphinx
-  - sphinx-book-theme
-  - ipython
-  - numpydoc
-  - seaborn
-  - sphinx-intl
+  - pip==23.2.1
+  - cudatoolkit==11.7
   - pip:
-    - joblib
-    - progressbar2
-    - sphinx-togglebutton
-    - git+https://github.com/OGGM/pytest-mpl
-    - oggm==1.5.3
+      - torch==2.0.1
+      - torchaudio==2.0.2
+      - torchvision==0.15.2
+      - tqdm==4.66.1
+      - numpy==1.26.0
+      - pandas==2.1.1
+      - scikit-learn==1.3.1
+      - matplotlib==3.8.0
+      - uncertainty_toolbox==0.1.1
+      - joblib==1.3.2
