@@ -194,7 +194,7 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
         print(f'Training model with params: {params}')
         scores_per_epoch = train_model(**params)
         scores_per_epoch_df = pd.DataFrame.from_records(scores_per_epoch)
-        if local_cfg.SHOW_PLOTS:
+        if local_cfg.SHOW_PLOTS or local_cfg.SAVE_PLOTS:
             n_cols = len(scores_per_epoch_df.columns)
             plt.figure(figsize=(20, 4), dpi=120)
             for i, k in enumerate(scores_per_epoch_df.columns):
@@ -211,7 +211,8 @@ def run_experiment(seed_model, seed_split, model_type, z_noise, dropout_p, exper
                 fp = Path(training_dir) / 'learning_curves' / fn
                 fp.parent.mkdir(parents=True, exist_ok=True)
                 plt.savefig(fp)
-            # plt.show()
+            if local_cfg.SHOW_PLOTS:
+                plt.show()
     else:
         print(f'{fp_model} already exists. Skipping the training.')
 

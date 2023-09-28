@@ -57,6 +57,8 @@ def train_skl_model(model_name, z_noise, seed_model, seed_split, use_hpo=True):
     # check if the results already exist and skip if needed
     label = f'z_{z_noise:.2f}_seed_model_{seed_model}_seed_split_{seed_split}'
     fp_model = Path(training_dir) / 'models' / f'{model_name}_model_{label}.pkl'
+
+    n_jobs = local_cfg.NUM_PROCS_SKL
     if not fp_model.exists() or local_cfg.RETRAIN_MODEL_FORCE:
         if not use_hpo:
             # build the model with the default parameters
@@ -75,13 +77,14 @@ def train_skl_model(model_name, z_noise, seed_model, seed_split, use_hpo=True):
             x = np.concatenate((x_train, x_valid), axis=0)
             y = np.concatenate((y_train, y_valid), axis=0)
             pds = PredefinedSplit(test_fold=split_index)
-            kargs = {'rfr': {'random_state': seed_model, 'n_jobs': 8}, 'gbr': {'random_state': seed_model}, 'lr': {}}
+            kargs = {'rfr': {'random_state': seed_model, 'n_jobs': 1},
+                     'gbr': {'random_state': seed_model}, 'lr': {}}
             hpo = GridSearchCV(
                 estimator=model_class(**kargs[model_name]),
                 param_grid=model_to_param_grid[model_name],
                 scoring='neg_mean_absolute_error',
                 verbose=True,
-                n_jobs=-1,
+                n_jobs=n_jobs,
                 cv=pds,
                 return_train_score=True,
                 refit=False,
@@ -97,7 +100,8 @@ def train_skl_model(model_name, z_noise, seed_model, seed_split, use_hpo=True):
 
             # fit the model with the best parameters
             print(f'Training {model_name.upper()} with best params: {hpo.best_params_}')
-            kargs = {'rfr': {'random_state': seed_model, 'n_jobs': -1}, 'gbr': {'random_state': seed_model}, 'lr': {}}
+            kargs = {'rfr': {'random_state': seed_model, 'n_jobs': n_jobs},
+                     'gbr': {'random_state': seed_model}, 'lr': {}}
             skl_model = model_class(**hpo.best_params_, **kargs[model_name])
             skl_model.fit(x_train, y_train)
 
@@ -154,7 +158,7 @@ def train_skl_model(model_name, z_noise, seed_model, seed_split, use_hpo=True):
 
 
 if __name__ == '__main__':
-    for crt_model_name in tqdm(['lr', 'rfr', 'gbr']):
+    for crt_model_name in tqdm(['lr', 'rfr']):
         for crt_z_noise in local_cfg.Z_NOISE_LIST:
             pbar = tqdm(range(local_cfg.SEED, local_cfg.SEED + local_cfg.NUM_SEEDS),
                         desc=f'model_name = {crt_model_name}; z_noise = {crt_z_noise}')
