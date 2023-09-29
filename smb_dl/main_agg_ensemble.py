@@ -30,7 +30,7 @@ if __name__ == '__main__':
                     'fold': 'first',
                     'noise': 'first',
                     'y_true': 'first',
-                    'y_pred': [np.mean, np.std],
+                    'y_pred': ['mean', 'std'],
                 }
                 if 'sigma_pred' in res_df.columns:
                     agg_f['sigma_pred'] = lambda x: np.sqrt(np.mean(x ** 2))
