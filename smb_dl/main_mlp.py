@@ -68,8 +68,8 @@ def train_model(
             scores['train_loss'].append(loss.detach().cpu().item())
             mae = (y_pred[:, 0] - y[:, 0]).abs().mean().detach().cpu().item()
             scores['train_MAE'].append(mae)
-            mse = ((y_pred[:, 0] - y[:, 0]).detach().cpu() ** 2).mean().sqrt().cpu().item()
-            scores['train_RMSE'].append(mse)
+            rmse = ((y_pred[:, 0] - y[:, 0]).detach().cpu() ** 2).mean().sqrt().cpu().item()
+            scores['train_RMSE'].append(rmse)
 
         scores.update({f'valid_{k}': [] for k in ['loss', 'MAE', 'RMSE']})
         with torch.no_grad():
@@ -88,8 +88,8 @@ def train_model(
                 scores['valid_loss'].append(loss.detach().cpu().item())
                 mae = (y_pred[:, 0] - y[:, 0]).abs().mean().detach().cpu().item()
                 scores['valid_MAE'].append(mae)
-                mse = ((y_pred[:, 0] - y[:, 0]).detach().cpu() ** 2).mean().sqrt().cpu().item()
-                scores['valid_RMSE'].append(mse)
+                rmse = ((y_pred[:, 0] - y[:, 0]).detach().cpu() ** 2).mean().sqrt().cpu().item()
+                scores['valid_RMSE'].append(rmse)
 
                 # check if the error reduced and then save the model
                 if save_best_model and i_epoch > 1:
