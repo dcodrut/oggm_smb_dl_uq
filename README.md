@@ -1,4 +1,5 @@
 ## Uncertainty-Aware Learning with Label Noise for Glacier Mass Balance Modelling
+#### Link to the paper: https://ieeexplore.ieee.org/document/10409243
 
 ### Set up the python environment
 `conda env create -f environment.yml`  
